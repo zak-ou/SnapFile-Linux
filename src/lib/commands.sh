@@ -17,71 +17,324 @@
 # TODO : à implémenter dans le Sprint 2
 # ============================================================================
 cmd_save() {
-    log_event "INFOS" "COMMAND: save $TARGET_DIR (fork=$OPT_FORK, thread=$OPT_THREAD)"
+    log_event "INFOS" "COMMAND: save $TARGET_DIR"
 
-    # =========================================================
-    # TODO SPRINT 2 — Membre 2
-    # =========================================================
-    # 1. Vérifier l'espace disque disponible (die 104 si plein)
-    # 2. Parcours récursif avec find
-    # 3. Calcul SHA-256 de chaque fichier (sha256sum)
-    # 4. Déduplication : ln -s si hash déjà dans objects/
-    # 5. Compression : gzip vers objects/<hash>.gz
-    # 6. Créer les métadonnées dans snapshots/
-    # 7. Si OPT_FORK=1 : lancer en arrière-plan avec & + disown
-    # 8. Si OPT_THREAD=1 : compression parallèle avec wait
-    # 9. log_event "INFOS" "SNAPSHOT_CREATED id=N files=N size=NM"
-    # =========================================================
+    # =========================
+    # Vérifier espace disque
+    # =========================
+    local avail_space
+    avail_space=$(df -k "$TARGET_DIR" | tail -1 | awk '{print $4}')
+    [ "$avail_space" -lt 51200 ] && die 104 "Espace insuffisant"
 
-    echo "🔄 [save] Dossier cible : $TARGET_DIR"
-    echo "⚠️  À implémenter — Sprint 2 (Membre 2)"
+    # =========================
+    # Snapshot ID
+    # =========================
+    local snap_id
+    snap_id=$(date '+%Y%m%d%H%M%S')
+
+    local meta_file="$SNAPSHOTS_DIR/${snap_id}.meta"
+    local tmpfile
+    tmpfile=$(mktemp) || die 107 "Impossible de créer un fichier temporaire"
+
+    find "$TARGET_DIR" -type f > "$tmpfile"
+
+    echo "source_dir=$TARGET_DIR" > "$meta_file"
+
+    local files_count=0
+    local total_size=0
+
+    # =========================
+    # Fonction de traitement
+    # =========================
+    process_file() {
+        # On reçoit un lot de fichiers (max 5) en arguments
+        for file in "$@"; do
+            [ ! -f "$file" ] && continue
+
+            local hash
+            hash=$(sha256sum "$file" | awk '{print $1}')
+
+            local obj_path="$OBJECTS_DIR/${hash}.gz"
+
+            local file_size
+            file_size=$(stat -c%s "$file")
+
+            # compression si besoin
+            if [ ! -f "$obj_path" ]; then
+                gzip -c "$file" > "$obj_path" || continue
+            fi
+
+            local relative_path="${file#$TARGET_DIR/}"
+
+            # écrire dans meta (SAFE avec lock pour le parallélisme)
+            (
+                flock 200
+                echo "$relative_path $hash" >> "$meta_file"
+            ) 200>"$meta_file.lock"
+
+            echo "$file_size" >> "/tmp/snap_${snap_id}.size"
+        done
+    }
+
+    export -f process_file
+    export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+    # =========================
+    # MODE FORK (-f)
+    # =========================
+    if [ "$OPT_FORK" -eq 1 ]; then
+        echo "🚀 Mode FORK (C-Worker par lots de 5)"
+
+        # Compiler le worker si nécessaire
+        if [ ! -f "$SCRIPT_DIR/lib/fork_worker" ]; then
+            gcc -O3 "$SCRIPT_DIR/lib/fork_worker.c" -o "$SCRIPT_DIR/lib/fork_worker" || die 106 "Échec de compilation du fork_worker (gcc requis)"
+        fi
+
+        export -f process_file
+        export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+        # Lancer le worker C
+        "$SCRIPT_DIR/lib/fork_worker" "$tmpfile"
+
+
+       
+
+    # =========================
+    # MODE THREAD (-t)
+    # =========================
+    elif [ "$OPT_THREAD" -eq 1 ]; then
+        echo "🧵 Mode THREAD (C-Worker avec pthread)"
+
+        # Compiler le worker si nécessaire
+        if [ ! -f "$SCRIPT_DIR/lib/thread_worker" ]; then
+            gcc -O3 "$SCRIPT_DIR/lib/thread_worker.c" -o "$SCRIPT_DIR/lib/thread_worker" -lpthread || die 106 "Échec de compilation du thread_worker (gcc requis)"
+        fi
+
+        export -f process_file
+        export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+        # Lancer le worker C (pthread)
+        "$SCRIPT_DIR/lib/thread_worker" "$tmpfile"
+
+    # =========================
+    # MODE NORMAL
+    # =========================
+    else
+        while IFS= read -r file; do
+            process_file "$file"
+        done < "$tmpfile"
+    fi
+
+    # =========================
+    # VÉRIFICATION DE CHANGEMENT
+    # =========================
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
+    local last_meta
+    last_meta=$(tail -n 1 "$INDEX_DIR/${dir_name}.list" 2>/dev/null)
+
+    if [ -n "$last_meta" ] && [ -f "$SNAPSHOTS_DIR/$last_meta" ]; then
+        # On compare uniquement les fichiers et leurs hashs (triés pour le parallélisme)
+        grep -v "source_dir=" "$SNAPSHOTS_DIR/$last_meta" | sort > "/tmp/last.tmp"
+        grep -v "source_dir=" "$meta_file" | sort > "/tmp/curr.tmp"
+
+        if diff "/tmp/last.tmp" "/tmp/curr.tmp" > /dev/null; then
+            echo "ℹ️ Aucun changement détecté depuis le dernier snapshot ($last_meta). Annulation."
+            rm -f "$meta_file" "$meta_file.lock" "$tmpfile" "/tmp/snap_${snap_id}.size" "/tmp/last.tmp" "/tmp/curr.tmp"
+            return 0
+        fi
+        rm -f "/tmp/last.tmp" "/tmp/curr.tmp"
+    fi
+
+    # =========================
+    # FINALISATION
+    # =========================
+    files_count=$(wc -l < "$tmpfile")
+
+    if [ -f "/tmp/snap_${snap_id}.size" ]; then
+        total_size=$(awk '{s+=$1} END {print s}' "/tmp/snap_${snap_id}.size")
+        rm -f "/tmp/snap_${snap_id}.size"
+    fi
+
+    # =========================
+    # INDEX (par dossier)
+    # =========================
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
+
+    echo "${snap_id}.meta" >> "$INDEX_DIR/${dir_name}.list"
+
+    rm -f "$tmpfile"
+    rm -f "$meta_file.lock"
+
+    local size_mb=$((total_size / 1024 / 1024))
+
+    log_event "INFOS" "SNAPSHOT_CREATED id=$snap_id files=$files_count size=${size_mb}M"
+
+    echo "✅ Snapshot terminé ! ID: $snap_id ($files_count fichiers)"
 }
-
 # ============================================================================
 # FONCTION : cmd_log()
 # Affiche l'historique des snapshots d'un dossier
-# Variables utilisées : $TARGET_DIR
-# TODO : à implémenter dans le Sprint 3
+# Variables utilisées : $TARGET_DIR#
 # ============================================================================
 cmd_log() {
     log_event "INFOS" "COMMAND: log $TARGET_DIR"
 
-    # =========================================================
-    # TODO SPRINT 3 — Membre 3
-    # =========================================================
-    # 1. Vérifier que ~/.snapfile/snapshots/ n'est pas vide (die 102)
-    # 2. Lire les fichiers de métadonnées avec awk/grep
-    # 3. Filtrer par nom de dossier source
-    # 4. Afficher un tableau formaté : ID | Date | Fichiers | Taille
-    # =========================================================
+    # 1. Nom du dossier (ex: "mon_projet")
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
 
-    echo "📋 [log] Dossier cible : $TARGET_DIR"
-    echo "⚠️  À implémenter — Sprint 3 (Membre 3)"
+    # 2. Fichier index
+    local index_file="$INDEX_DIR/${dir_name}.list"
+
+    # 3. Vérifier que des snapshots existent
+    if [[ ! -f "$index_file" ]] || [[ ! -s "$index_file" ]]; then
+        die 102 "Aucun snapshot trouvé pour le dossier : $TARGET_DIR"
+    fi
+
+    # 4. Afficher l'en-tête du tableau
+    echo ""
+    echo "📋 Historique des snapshots : $TARGET_DIR"
+    echo ""
+    printf "%-20s %-20s %-10s %-12s\n" "ID" "Date" "Fichiers" "Taille"
+    printf "%-20s %-20s %-10s %-12s\n" "--------------------" "--------------------" "----------" "------------"
+
+    # 5. Parcourir chaque snapshot
+    local snap_count=0
+    while IFS= read -r meta_filename; do
+        [[ -z "$meta_filename" ]] && continue
+
+        local meta_file="$SNAPSHOTS_DIR/$meta_filename"
+        [[ ! -f "$meta_file" ]] && continue
+
+        # Extraire l'ID (nom du fichier sans .meta)
+        local snap_id="${meta_filename%.meta}"
+
+        # Formater la date depuis l'ID (format: YYYYMMDDHHmmSS)
+        local year="${snap_id:0:4}"
+        local month="${snap_id:4:2}"
+        local day="${snap_id:6:2}"
+        local hour="${snap_id:8:2}"
+        local min="${snap_id:10:2}"
+        local sec="${snap_id:12:2}"
+        local date_fmt="${day}/${month}/${year} ${hour}:${min}:${sec}"
+
+        # Compter les fichiers (lignes sans "source_dir=")
+        local files_count
+        files_count=$(grep -v "^source_dir=" "$meta_file" | grep -c ".")
+
+        # Calculer la taille totale des objets
+        local total_size=0
+        while IFS= read -r line; do
+            [[ "$line" == source_dir=* ]] && continue
+            [[ -z "$line" ]] && continue
+            local hash
+            hash=$(echo "$line" | awk '{print $2}')
+            local obj="$OBJECTS_DIR/${hash}.gz"
+            if [[ -f "$obj" ]]; then
+                local sz
+                sz=$(stat -c%s "$obj" 2>/dev/null || echo 0)
+                total_size=$((total_size + sz))
+            fi
+        done < "$meta_file"
+
+        local size_kb=$((total_size / 1024))
+
+        printf "%-20s %-20s %-10s %-12s\n" "$snap_id" "$date_fmt" "$files_count" "${size_kb} Ko"
+        ((snap_count++))
+    done < "$index_file"
+
+    echo ""
+    echo "Total : $snap_count snapshot(s)"
+    log_event "INFOS" "LOG_DISPLAYED dir=$dir_name count=$snap_count"
 }
 
 # ============================================================================
 # FONCTION : cmd_restore()
 # Restaure un snapshot par son ID
 # Variables utilisées : $TARGET_DIR, $OPT_SUBSHELL, $@
-# TODO : à implémenter dans le Sprint 3
 # ============================================================================
 cmd_restore() {
     log_event "INFOS" "COMMAND: restore $TARGET_DIR (subshell=$OPT_SUBSHELL)"
 
-    # =========================================================
-    # TODO SPRINT 3 — Membre 3
-    # =========================================================
-    # 1. Parser --id N depuis les arguments restants
-    # 2. Vérifier que l'ID existe (die 103 sinon)
-    # 3. Lire les métadonnées du snapshot
-    # 4. Reconstruire les fichiers depuis objects/ (gunzip)
-    # 5. Si OPT_SUBSHELL=1 : restaurer dans /tmp/snapfile_preview/
-    #    Sinon : restaurer directement dans TARGET_DIR
-    # 6. log_event "INFOS" "RESTORE_APPLIED id=N"
-    # =========================================================
+    # 1. Parser --id depuis les arguments restants
+    # Parser --id depuis les arguments originaux
+    local snap_id=""
+    for ((i=0; i<${#ORIGINAL_ARGS[@]}; i++)); do
+        if [[ "${ORIGINAL_ARGS[$i]}" == "--id" ]]; then
+            snap_id="${ORIGINAL_ARGS[$((i+1))]}"
+            break
+        fi
+    done
 
-    echo "♻️  [restore] Dossier cible : $TARGET_DIR"
-    echo "⚠️  À implémenter — Sprint 3 (Membre 3)"
+    # 2. Vérifier que l'ID est fourni
+    if [[ -z "$snap_id" ]]; then
+        die 103 "Paramètre manquant : --id <snapshot_id> requis pour restore"
+    fi
+
+    # 3. Vérifier que le fichier .meta existe
+    local meta_file="$SNAPSHOTS_DIR/${snap_id}.meta"
+    if [[ ! -f "$meta_file" ]]; then
+        die 103 "Version introuvable : snapshot '$snap_id' n'existe pas"
+    fi
+
+    # 4. Définir la destination
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
+    local dest_dir
+
+    if [[ "$OPT_SUBSHELL" -eq 1 ]]; then
+        dest_dir="/tmp/snapfile_preview/${dir_name}"
+        echo "Mode prévisualisation : restauration dans $dest_dir"
+    else
+        dest_dir="$TARGET_DIR"
+        echo "Restauration dans : $dest_dir"
+        read -rp "Ceci va écraser les fichiers actuels. Continuer ? (oui/non) : " confirm
+        if [[ "$confirm" != "oui" ]]; then
+            echo "Opération annulée."
+            exit 0
+        fi
+    fi
+
+    mkdir -p "$dest_dir"
+
+    # 5. Restaurer chaque fichier
+    local restored=0
+    local errors=0
+
+    while IFS= read -r line; do
+        # Ignorer la ligne source_dir=
+        [[ "$line" == source_dir=* ]] && continue
+        [[ -z "$line" ]] && continue
+
+        local rel_path
+        rel_path=$(echo "$line" | awk '{print $1}')
+        local hash
+        hash=$(echo "$line" | awk '{print $2}')
+
+        local obj_file="$OBJECTS_DIR/${hash}.gz"
+        local dest_file="$dest_dir/$rel_path"
+
+        # Créer les sous-dossiers si nécessaire
+        mkdir -p "$(dirname "$dest_file")"
+
+        # Décompresser le fichier
+        if gunzip -c "$obj_file" > "$dest_file" 2>/dev/null; then
+            ((restored++))
+        else
+            echo "Erreur : impossible de restaurer $rel_path" >&2
+            ((errors++))
+        fi
+    done < "$meta_file"
+
+    # 6. Résultat
+    echo ""
+    echo "Restauration terminée : $restored fichier(s) restauré(s)"
+    [[ $errors -gt 0 ]] && echo "$errors fichier(s) en erreur"
+    echo "Destination : $dest_dir"
+
+    log_event "INFOS" "RESTORE_APPLIED id=$snap_id files=$restored dest=$dest_dir"
 }
 
 # ============================================================================
