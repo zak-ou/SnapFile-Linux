@@ -54,6 +54,9 @@ CODES D'ERREUR
     103    Version introuvable (ID de snapshot inexistant)
     104    Espace disque insuffisant
     105    Permission refusée (option -r nécessite sudo)
+    106    Échec de compilation (gcc manquant)
+    107    Erreur système (fichiers temporaires)
+    108    Interruption utilisateur (SIGINT)
 
 FICHIERS
     ~/.snapfile/objects/        Fichiers dédupliqués (stockage par hash)

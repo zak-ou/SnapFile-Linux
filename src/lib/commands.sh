@@ -17,26 +17,162 @@
 # TODO : à implémenter dans le Sprint 2
 # ============================================================================
 cmd_save() {
-    log_event "INFOS" "COMMAND: save $TARGET_DIR (fork=$OPT_FORK, thread=$OPT_THREAD)"
+    log_event "INFOS" "COMMAND: save $TARGET_DIR"
 
-    # =========================================================
-    # TODO SPRINT 2 — Membre 2
-    # =========================================================
-    # 1. Vérifier l'espace disque disponible (die 104 si plein)
-    # 2. Parcours récursif avec find
-    # 3. Calcul SHA-256 de chaque fichier (sha256sum)
-    # 4. Déduplication : ln -s si hash déjà dans objects/
-    # 5. Compression : gzip vers objects/<hash>.gz
-    # 6. Créer les métadonnées dans snapshots/
-    # 7. Si OPT_FORK=1 : lancer en arrière-plan avec & + disown
-    # 8. Si OPT_THREAD=1 : compression parallèle avec wait
-    # 9. log_event "INFOS" "SNAPSHOT_CREATED id=N files=N size=NM"
-    # =========================================================
+    # =========================
+    # Vérifier espace disque
+    # =========================
+    local avail_space
+    avail_space=$(df -k "$TARGET_DIR" | tail -1 | awk '{print $4}')
+    [ "$avail_space" -lt 51200 ] && die 104 "Espace insuffisant"
 
-    echo "🔄 [save] Dossier cible : $TARGET_DIR"
-    echo "⚠️  À implémenter — Sprint 2 (Membre 2)"
+    # =========================
+    # Snapshot ID
+    # =========================
+    local snap_id
+    snap_id=$(date '+%Y%m%d%H%M%S')
+
+    local meta_file="$SNAPSHOTS_DIR/${snap_id}.meta"
+    local tmpfile
+    tmpfile=$(mktemp) || die 107 "Impossible de créer un fichier temporaire"
+
+    find "$TARGET_DIR" -type f > "$tmpfile"
+
+    echo "source_dir=$TARGET_DIR" > "$meta_file"
+
+    local files_count=0
+    local total_size=0
+
+    # =========================
+    # Fonction de traitement
+    # =========================
+    process_file() {
+        # On reçoit un lot de fichiers (max 5) en arguments
+        for file in "$@"; do
+            [ ! -f "$file" ] && continue
+
+            local hash
+            hash=$(sha256sum "$file" | awk '{print $1}')
+
+            local obj_path="$OBJECTS_DIR/${hash}.gz"
+
+            local file_size
+            file_size=$(stat -c%s "$file")
+
+            # compression si besoin
+            if [ ! -f "$obj_path" ]; then
+                gzip -c "$file" > "$obj_path" || continue
+            fi
+
+            local relative_path="${file#$TARGET_DIR/}"
+
+            # écrire dans meta (SAFE avec lock pour le parallélisme)
+            (
+                flock 200
+                echo "$relative_path $hash" >> "$meta_file"
+            ) 200>"$meta_file.lock"
+
+            echo "$file_size" >> "/tmp/snap_${snap_id}.size"
+        done
+    }
+
+    export -f process_file
+    export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+    # =========================
+    # MODE FORK (-f)
+    # =========================
+    if [ "$OPT_FORK" -eq 1 ]; then
+        echo "🚀 Mode FORK (C-Worker par lots de 5)"
+
+        # Compiler le worker si nécessaire
+        if [ ! -f "$SCRIPT_DIR/lib/fork_worker" ]; then
+            gcc -O3 "$SCRIPT_DIR/lib/fork_worker.c" -o "$SCRIPT_DIR/lib/fork_worker" || die 106 "Échec de compilation du fork_worker (gcc requis)"
+        fi
+
+        export -f process_file
+        export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+        # Lancer le worker C
+        "$SCRIPT_DIR/lib/fork_worker" "$tmpfile"
+
+
+       
+
+    # =========================
+    # MODE THREAD (-t)
+    # =========================
+    elif [ "$OPT_THREAD" -eq 1 ]; then
+        echo "🧵 Mode THREAD (C-Worker avec pthread)"
+
+        # Compiler le worker si nécessaire
+        if [ ! -f "$SCRIPT_DIR/lib/thread_worker" ]; then
+            gcc -O3 "$SCRIPT_DIR/lib/thread_worker.c" -o "$SCRIPT_DIR/lib/thread_worker" -lpthread || die 106 "Échec de compilation du thread_worker (gcc requis)"
+        fi
+
+        export -f process_file
+        export TARGET_DIR OBJECTS_DIR meta_file snap_id
+
+        # Lancer le worker C (pthread)
+        "$SCRIPT_DIR/lib/thread_worker" "$tmpfile"
+
+    # =========================
+    # MODE NORMAL
+    # =========================
+    else
+        while IFS= read -r file; do
+            process_file "$file"
+        done < "$tmpfile"
+    fi
+
+    # =========================
+    # VÉRIFICATION DE CHANGEMENT
+    # =========================
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
+    local last_meta
+    last_meta=$(tail -n 1 "$INDEX_DIR/${dir_name}.list" 2>/dev/null)
+
+    if [ -n "$last_meta" ] && [ -f "$SNAPSHOTS_DIR/$last_meta" ]; then
+        # On compare uniquement les fichiers et leurs hashs (triés pour le parallélisme)
+        grep -v "source_dir=" "$SNAPSHOTS_DIR/$last_meta" | sort > "/tmp/last.tmp"
+        grep -v "source_dir=" "$meta_file" | sort > "/tmp/curr.tmp"
+
+        if diff "/tmp/last.tmp" "/tmp/curr.tmp" > /dev/null; then
+            echo "ℹ️ Aucun changement détecté depuis le dernier snapshot ($last_meta). Annulation."
+            rm -f "$meta_file" "$meta_file.lock" "$tmpfile" "/tmp/snap_${snap_id}.size" "/tmp/last.tmp" "/tmp/curr.tmp"
+            return 0
+        fi
+        rm -f "/tmp/last.tmp" "/tmp/curr.tmp"
+    fi
+
+    # =========================
+    # FINALISATION
+    # =========================
+    files_count=$(wc -l < "$tmpfile")
+
+    if [ -f "/tmp/snap_${snap_id}.size" ]; then
+        total_size=$(awk '{s+=$1} END {print s}' "/tmp/snap_${snap_id}.size")
+        rm -f "/tmp/snap_${snap_id}.size"
+    fi
+
+    # =========================
+    # INDEX (par dossier)
+    # =========================
+    local dir_name
+    dir_name=$(basename "$TARGET_DIR")
+
+    echo "${snap_id}.meta" >> "$INDEX_DIR/${dir_name}.list"
+
+    rm -f "$tmpfile"
+    rm -f "$meta_file.lock"
+
+    local size_mb=$((total_size / 1024 / 1024))
+
+    log_event "INFOS" "SNAPSHOT_CREATED id=$snap_id files=$files_count size=${size_mb}M"
+
+    echo "✅ Snapshot terminé ! ID: $snap_id ($files_count fichiers)"
 }
-
 # ============================================================================
 # FONCTION : cmd_log()
 # Affiche l'historique des snapshots d'un dossier
