@@ -53,6 +53,10 @@ source "$SCRIPT_DIR/lib/commands.sh" # cmd_save(), cmd_log(), cmd_restore(), run
 # Capturer Ctrl+C (Interruption)
 trap 'echo ""; die 108 "Interruption par l utilisateur"' SIGINT
 
+#need it cz $@ already consumed by parse_options
+# Sauvegarder les arguments originaux (pour cmd_restore --id)
+ORIGINAL_ARGS=("$@")
+
 # 1. Parser les options et récupérer COMMAND + TARGET_DIR
 parse_options "$@"
 
