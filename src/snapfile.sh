@@ -23,7 +23,10 @@ readonly SNAPSHOTS_DIR="$SNAPFILE_DIR/snapshots"
 readonly INDEX_DIR="$SNAPFILE_DIR/index"
 
 # Log
-LOG_FILE="/var/log/snapfile/history.log"
+
+# ancienne ligne :  LOG_FILE="/var/log/snapfile/history.log"
+# remplacer par : 
+readonly LOG_FILE="$SNAPFILE_DIR/history.log"
 
 # Flags des options (0 = désactivé, 1 = activé)
 OPT_FORK=0
@@ -59,6 +62,9 @@ ORIGINAL_ARGS=("$@")
 
 # 1. Parser les options et récupérer COMMAND + TARGET_DIR
 parse_options "$@"
+
+# pour synchroniser les arguments après le shift
+set -- "$COMMAND" "$TARGET_DIR"
 
 # 2. Traiter l'option -r (reset) en priorité
 if [[ $OPT_RESET -eq 1 ]]; then
