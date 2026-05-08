@@ -49,11 +49,11 @@ EXEMPLES
 
 CODES D'ERREUR
     100    Option non reconnue
-    101    Paramètre manquant (chemin du dossier)
+    101    Paramètre manquant  ou invalide (chemin du dossier)
     102    Dépôt non initialisé (aucun snapshot trouvé)
     103    Version introuvable (ID de snapshot inexistant)
     104    Espace disque insuffisant
-    105    Permission refusée (option -r nécessite sudo)
+    105    Conflit d'options (ex: -f et -t simultanés)
     106    Échec de compilation (gcc manquant)
     107    Erreur système (fichiers temporaires)
     108    Interruption utilisateur (SIGINT)

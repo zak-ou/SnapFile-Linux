@@ -21,15 +21,18 @@ init_repository() {
 # Vérifie que le chemin du dossier cible est fourni et valide
 # ============================================================================
 validate_target_dir() {
+    # 1. Vérifier si l'argument est vide (Erreur 101)
     if [[ -z "$TARGET_DIR" ]]; then
         die 101 "Paramètre manquant : vous devez spécifier un chemin de dossier"
     fi
 
-    if [[ ! -e "$TARGET_DIR" ]]; then
-        die 101 "Le chemin spécifié n'existe pas : $TARGET_DIR"
+    # 2. Vérifier si le dossier existe (Erreur 102)
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        die 102 "Le chemin spécifié n'existe pas : $TARGET_DIR"
     fi
 
-    if [[ ! -d "$TARGET_DIR" ]]; then
-        die 101 "Le chemin spécifié n'est pas un dossier : $TARGET_DIR"
+    # 3. AJOUT : Vérifier les permissions de lecture (Erreur 104)
+    if [[ ! -r "$TARGET_DIR" ]]; then
+        die 104 "Permission refusée : impossible de lire le contenu de $TARGET_DIR"
     fi
 }
