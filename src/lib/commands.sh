@@ -46,41 +46,36 @@ cmd_save() {
     # =========================
     # Fonction de traitement
     # =========================
-   process_file() {
-        process_file() {
-            # Définition du chemin absolu basé sur le répertoire personnel de l'utilisateur
-            # Cela permet au code d'être partagé sans modification des chemins
-            local real_objects="$HOME/.snapfile/objects"
-            
-            for file in "$@"; do
-                # Sécurité : ignore si l'argument n'est pas un fichier valide
-                [ ! -f "$file" ] && continue
+    process_file() {
+        # On reçoit un lot de fichiers (max 5) en arguments
+        for file in "$@"; do
+            [ ! -f "$file" ] && continue
 
-                # 1. Calcul du hash SHA-256 (L'empreinte unique du contenu)
-                local hash
-                hash=$(sha256sum "$file" | awk '{print $1}')
-                
-                # Définition du chemin de l'objet compressé
-                local obj_path="$real_objects/${hash}.gz"
+            local hash
+            hash=$(sha256sum "$file" | awk '{print $1}')
 
-                # 2. DÉDUPLICATION : Test de présence physique de l'objet
-                # Si le fichier existe déjà (même contenu), on ne fait rien
-                if [[ ! -f "$obj_path" ]]; then
-                    # On ne compresse et stocke que les nouveaux contenus
-                    gzip -c "$file" > "$obj_path"
-                fi
+            local obj_path="$OBJECTS_DIR/${hash}.gz"
 
-                # 3. Métadonnées (Enregistrement du lien Chemin <-> Hash)
-                # Utilisation de TARGET_DIR pour calculer le chemin relatif
-                local rel_path="${file#$TARGET_DIR/}"
-                (
-                    # Utilisation de flock pour éviter les conflits en mode Fork/Thread
-                    flock 200
-                    echo "$rel_path $hash" >> "$meta_file"
-                ) 200>"$meta_file.lock"
-            done
-        }
+            local file_size
+            file_size=$(stat -c%s "$file")
+
+            # compression si besoin
+            if [ ! -f "$obj_path" ]; then
+                gzip -c "$file" > "$obj_path" || continue
+            fi
+
+            local relative_path="${file#$TARGET_DIR/}"
+
+            # écrire dans meta (SAFE avec lock pour le parallélisme)
+            (
+                flock 200
+                echo "$relative_path $hash" >> "$meta_file"
+            ) 200>"$meta_file.lock"
+
+            echo "$file_size" >> "/tmp/snap_${snap_id}.size"
+        done
     }
+
     export -f process_file
     export TARGET_DIR OBJECTS_DIR meta_file snap_id
 
