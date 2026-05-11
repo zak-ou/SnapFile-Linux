@@ -22,11 +22,8 @@ readonly OBJECTS_DIR="$SNAPFILE_DIR/objects"
 readonly SNAPSHOTS_DIR="$SNAPFILE_DIR/snapshots"
 readonly INDEX_DIR="$SNAPFILE_DIR/index"
 
-# Log
-
-# ancienne ligne :  LOG_FILE="/var/log/snapfile/history.log"
-# remplacer par : 
-readonly LOG_FILE="$SNAPFILE_DIR/history.log"
+# Log (par défaut, peut être modifié par -l)
+LOG_FILE="$SNAPFILE_DIR/history.log"
 
 # Flags des options (0 = désactivé, 1 = activé)
 OPT_FORK=0

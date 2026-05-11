@@ -36,6 +36,7 @@ parse_options() {
                 ;;
             l)
                 LOG_FILE="${OPTARG}/snapfile.log"
+                export LOG_FILE
                 ;;
             r)
                 OPT_RESET=1
