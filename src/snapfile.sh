@@ -71,11 +71,23 @@ if [[ $OPT_RESET -eq 1 ]]; then
     reset_snapfile
 fi
 
-# 3. Valider le paramètre obligatoire
-validate_target_dir
+# 3. Valider le paramètre obligatoire (sauf pour init)
+if [[ "$COMMAND" != "init" ]]; then
+    validate_target_dir
+fi
 
-# 4. Initialiser le dépôt si nécessaire
-init_repository
+# 4. Vérifier que le dépôt est initialisé (sauf pour init et reset)
+if [[ "$COMMAND" != "init" && "$COMMAND" != "" ]]; then
+    if [[ ! -d "$SNAPFILE_DIR" ]]; then
+        echo ""
+        echo "❌ ERREUR : Le dépôt SnapFile n'est pas initialisé"
+        echo ""
+        echo "Veuillez d'abord initialiser le dépôt avec :"
+        echo "  ./snapfile.sh init"
+        echo ""
+        die 102 "Dépôt non initialisé. Exécutez 'snapfile init' d'abord."
+    fi
+fi
 
 # 5. Dispatcher vers la commande demandée
 run_command

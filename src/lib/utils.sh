@@ -24,6 +24,7 @@ DESCRIPTION
     par hash SHA-256 pour économiser l'espace disque.
 
 COMMANDES
+    init                        Initialise le dépôt SnapFile manuellement
     save <dossier>              Crée un nouveau snapshot du dossier
     log <dossier>               Affiche l'historique des snapshots
     restore <dossier> --id N    Restaure le snapshot N
@@ -39,6 +40,7 @@ OPTIONS
                                 (nécessite sudo)
 
 EXEMPLES
+    snapfile init
     snapfile save mon_projet/
     snapfile -f save mon_projet/
     snapfile -t save gros_projet/

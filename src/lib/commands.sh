@@ -10,6 +10,40 @@
 #   - cmd_restore() → Sprint 3 (Membre 3)
 ################################################################################
 export HOME=$HOME
+
+# ============================================================================
+# FONCTION : cmd_init()
+# Initialise manuellement le dépôt SnapFile
+# Usage : ./snapfile.sh init
+# ============================================================================
+cmd_init() {
+    log_event "INFOS" "COMMAND: init"
+    
+    if [[ -d "$SNAPFILE_DIR" ]]; then
+        echo "⚠️  Le dépôt SnapFile existe déjà : $SNAPFILE_DIR"
+        echo ""
+        echo "Structure actuelle :"
+        ls -lh "$SNAPFILE_DIR"
+        echo ""
+        echo "Snapshots : $(ls "$SNAPSHOTS_DIR" 2>/dev/null | wc -l) fichier(s)"
+        echo "Objets    : $(ls "$OBJECTS_DIR" 2>/dev/null | wc -l) fichier(s)"
+        echo "Index     : $(ls "$INDEX_DIR" 2>/dev/null | wc -l) fichier(s)"
+        log_event "INFOS" "Repository already exists at $SNAPFILE_DIR"
+    else
+        mkdir -p "$OBJECTS_DIR" "$SNAPSHOTS_DIR" "$INDEX_DIR"
+        log_event "INFOS" "Repository initialized at $SNAPFILE_DIR"
+        echo "✅ Dépôt SnapFile initialisé avec succès !"
+        echo ""
+        echo "📁 Structure créée :"
+        echo "   $SNAPFILE_DIR/"
+        echo "   ├── objects/     (stockage des fichiers compressés)"
+        echo "   ├── snapshots/   (métadonnées des sauvegardes)"
+        echo "   └── index/       (index par projet)"
+        echo ""
+        echo "Vous pouvez maintenant utiliser : ./snapfile.sh save <dossier>"
+    fi
+}
+
 # ============================================================================
 # FONCTION : cmd_save()
 # Sauvegarde un dossier sous forme de snapshot
@@ -354,6 +388,7 @@ run_command() {
 
     # Exécution normale (votre code actuel)
     case "$COMMAND" in
+        init)    cmd_init ;;
         save)    cmd_save "$TARGET_DIR" ;;
         log)     cmd_log "$TARGET_DIR" ;;
         restore) cmd_restore "$TARGET_DIR" ;;
