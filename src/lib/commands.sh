@@ -9,7 +9,7 @@
 #   - cmd_log()     → Sprint 3 (Membre 3)
 #   - cmd_restore() → Sprint 3 (Membre 3)
 ################################################################################
-
+export HOME=$HOME
 # ============================================================================
 # FONCTION : cmd_save()
 # Sauvegarde un dossier sous forme de snapshot
@@ -342,18 +342,21 @@ cmd_restore() {
 # Dispatch vers la bonne fonction selon $COMMAND
 # ============================================================================
 run_command() {
+    # Vérifier si le mode Fork est activé
+    if [[ $OPT_FORK -eq 1 ]]; then
+        # On lance la commande en arrière-plan SANS les parenthèses autour
+        cmd_save "$TARGET_DIR" & 
+        local pid=$!
+        echo -e "\n[INFO] Exécution en arrière-plan lancée (PID: $pid)"
+        log_event "INFOS" "Mode Fork activé : PID $pid"
+        return 0
+    fi
+
+    # Exécution normale (votre code actuel)
     case "$COMMAND" in
-        save)
-            cmd_save "$@"
-            ;;
-        log)
-            cmd_log "$@"
-            ;;
-        restore)
-            cmd_restore "$@"
-            ;;
-        *)
-            die 100 "Commande inconnue : '$COMMAND'  (valides : save, log, restore)"
-            ;;
+        save)    cmd_save "$TARGET_DIR" ;;
+        log)     cmd_log "$TARGET_DIR" ;;
+        restore) cmd_restore "$TARGET_DIR" ;;
+        *)       die 100 "Commande inconnue : '$COMMAND'" ;;
     esac
 }

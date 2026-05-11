@@ -49,8 +49,13 @@ parse_options() {
         esac
     done
 
-    # Décaler pour accéder aux paramètres positionnels
+    # Décaler les arguments pour accéder aux paramètres positionnels
     shift $((OPTIND - 1))
+
+    # Vérification de conflits d'options
+    if [[ $OPT_FORK -eq 1 ]] && [[ $OPT_THREAD -eq 1 ]]; then
+        die 105 "Conflit d'options : Choisissez soit -f (fork) soit -t (thread), pas les deux"
+    fi
 
     # Récupérer la commande et le dossier cible
     COMMAND="${1:-}"
