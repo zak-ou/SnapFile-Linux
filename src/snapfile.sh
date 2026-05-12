@@ -22,8 +22,8 @@ readonly OBJECTS_DIR="$SNAPFILE_DIR/objects"
 readonly SNAPSHOTS_DIR="$SNAPFILE_DIR/snapshots"
 readonly INDEX_DIR="$SNAPFILE_DIR/index"
 
-# Log
-LOG_FILE="/var/log/snapfile/history.log"
+# Log (par défaut, peut être modifié par -l)
+LOG_FILE="$SNAPFILE_DIR/history.log"
 
 # Flags des options (0 = désactivé, 1 = activé)
 OPT_FORK=0
@@ -60,16 +60,31 @@ ORIGINAL_ARGS=("$@")
 # 1. Parser les options et récupérer COMMAND + TARGET_DIR
 parse_options "$@"
 
+# pour synchroniser les arguments après le shift
+set -- "$COMMAND" "$TARGET_DIR"
+
 # 2. Traiter l'option -r (reset) en priorité
 if [[ $OPT_RESET -eq 1 ]]; then
     reset_snapfile
 fi
 
-# 3. Valider le paramètre obligatoire
-validate_target_dir
+# 3. Valider le paramètre obligatoire (sauf pour init)
+if [[ "$COMMAND" != "init" ]]; then
+    validate_target_dir
+fi
 
-# 4. Initialiser le dépôt si nécessaire
-init_repository
+# 4. Vérifier que le dépôt est initialisé (sauf pour init et reset)
+if [[ "$COMMAND" != "init" && "$COMMAND" != "" ]]; then
+    if [[ ! -d "$SNAPFILE_DIR" ]]; then
+        echo ""
+        echo "❌ ERREUR : Le dépôt SnapFile n'est pas initialisé"
+        echo ""
+        echo "Veuillez d'abord initialiser le dépôt avec :"
+        echo "  ./snapfile.sh init"
+        echo ""
+        die 102 "Dépôt non initialisé. Exécutez 'snapfile init' d'abord."
+    fi
+fi
 
 # 5. Dispatcher vers la commande demandée
 run_command

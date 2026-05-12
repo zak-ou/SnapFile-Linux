@@ -24,6 +24,7 @@ DESCRIPTION
     par hash SHA-256 pour économiser l'espace disque.
 
 COMMANDES
+    init                        Initialise le dépôt SnapFile manuellement
     save <dossier>              Crée un nouveau snapshot du dossier
     log <dossier>               Affiche l'historique des snapshots
     restore <dossier> --id N    Restaure le snapshot N
@@ -39,6 +40,7 @@ OPTIONS
                                 (nécessite sudo)
 
 EXEMPLES
+    snapfile init
     snapfile save mon_projet/
     snapfile -f save mon_projet/
     snapfile -t save gros_projet/
@@ -49,11 +51,11 @@ EXEMPLES
 
 CODES D'ERREUR
     100    Option non reconnue
-    101    Paramètre manquant (chemin du dossier)
+    101    Paramètre manquant  ou invalide (chemin du dossier)
     102    Dépôt non initialisé (aucun snapshot trouvé)
     103    Version introuvable (ID de snapshot inexistant)
     104    Espace disque insuffisant
-    105    Permission refusée (option -r nécessite sudo)
+    105    Conflit d'options (ex: -f et -t simultanés)
     106    Échec de compilation (gcc manquant)
     107    Erreur système (fichiers temporaires)
     108    Interruption utilisateur (SIGINT)
@@ -89,22 +91,22 @@ log_event() {
     # Créer le répertoire de log si nécessaire
     local log_dir
     log_dir=$(dirname "$LOG_FILE")
+    
     if [[ ! -d "$log_dir" ]]; then
-        if ! mkdir -p "$log_dir" 2>/dev/null; then
-            if ! sudo mkdir -p "$log_dir" 2>/dev/null; then
-                # Fallback vers un log local
-                LOG_FILE="$SNAPFILE_DIR/snapfile.log"
-                log_dir="$SNAPFILE_DIR"
-                mkdir -p "$log_dir" 2>/dev/null
-            else
-                sudo chmod 777 "$log_dir"
-            fi
-        fi
+        mkdir -p "$log_dir" 2>/dev/null || {
+            echo "⚠️  Impossible de créer le répertoire de log: $log_dir" >&2
+            return 1
+        }
     fi
 
-    # Écrire dans le log et afficher simultanément avec tee
-    echo "$log_entry" | tee -a "$LOG_FILE" 2>/dev/null \
-        || echo "$log_entry" >> "$LOG_FILE"
+    # Écrire dans le log
+    if ! echo "$log_entry" >> "$LOG_FILE" 2>/dev/null; then
+        echo "⚠️  Impossible d'écrire dans le fichier de log: $LOG_FILE" >&2
+        return 1
+    fi
+    
+    # Afficher aussi sur la console en mode verbose (optionnel)
+    # echo "$log_entry"
 }
 
 # ============================================================================

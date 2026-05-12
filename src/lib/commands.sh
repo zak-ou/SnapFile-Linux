@@ -9,6 +9,40 @@
 #   - cmd_log()     → Sprint 3 (Membre 3)
 #   - cmd_restore() → Sprint 3 (Membre 3)
 ################################################################################
+export HOME=$HOME
+
+# ============================================================================
+# FONCTION : cmd_init()
+# Initialise manuellement le dépôt SnapFile
+# Usage : ./snapfile.sh init
+# ============================================================================
+cmd_init() {
+    log_event "INFOS" "COMMAND: init"
+    
+    if [[ -d "$SNAPFILE_DIR" ]]; then
+        echo "⚠️  Le dépôt SnapFile existe déjà : $SNAPFILE_DIR"
+        echo ""
+        echo "Structure actuelle :"
+        ls -lh "$SNAPFILE_DIR"
+        echo ""
+        echo "Snapshots : $(ls "$SNAPSHOTS_DIR" 2>/dev/null | wc -l) fichier(s)"
+        echo "Objets    : $(ls "$OBJECTS_DIR" 2>/dev/null | wc -l) fichier(s)"
+        echo "Index     : $(ls "$INDEX_DIR" 2>/dev/null | wc -l) fichier(s)"
+        log_event "INFOS" "Repository already exists at $SNAPFILE_DIR"
+    else
+        mkdir -p "$OBJECTS_DIR" "$SNAPSHOTS_DIR" "$INDEX_DIR"
+        log_event "INFOS" "Repository initialized at $SNAPFILE_DIR"
+        echo "✅ Dépôt SnapFile initialisé avec succès !"
+        echo ""
+        echo "📁 Structure créée :"
+        echo "   $SNAPFILE_DIR/"
+        echo "   ├── objects/     (stockage des fichiers compressés)"
+        echo "   ├── snapshots/   (métadonnées des sauvegardes)"
+        echo "   └── index/       (index par projet)"
+        echo ""
+        echo "Vous pouvez maintenant utiliser : ./snapfile.sh save <dossier>"
+    fi
+}
 
 # ============================================================================
 # FONCTION : cmd_save()
@@ -342,18 +376,22 @@ cmd_restore() {
 # Dispatch vers la bonne fonction selon $COMMAND
 # ============================================================================
 run_command() {
+    # Vérifier si le mode Fork est activé
+    if [[ $OPT_FORK -eq 1 ]]; then
+        # On lance la commande en arrière-plan SANS les parenthèses autour
+        cmd_save "$TARGET_DIR" & 
+        local pid=$!
+        echo -e "\n[INFO] Exécution en arrière-plan lancée (PID: $pid)"
+        log_event "INFOS" "Mode Fork activé : PID $pid"
+        return 0
+    fi
+
+    # Exécution normale (votre code actuel)
     case "$COMMAND" in
-        save)
-            cmd_save "$@"
-            ;;
-        log)
-            cmd_log "$@"
-            ;;
-        restore)
-            cmd_restore "$@"
-            ;;
-        *)
-            die 100 "Commande inconnue : '$COMMAND'  (valides : save, log, restore)"
-            ;;
+        init)    cmd_init ;;
+        save)    cmd_save "$TARGET_DIR" ;;
+        log)     cmd_log "$TARGET_DIR" ;;
+        restore) cmd_restore "$TARGET_DIR" ;;
+        *)       die 100 "Commande inconnue : '$COMMAND'" ;;
     esac
 }
