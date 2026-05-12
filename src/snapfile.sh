@@ -7,8 +7,12 @@
 # Sujet   : Versionnement & Restauration Légère de Fichiers
 # Date    : 30 avril 2026
 #
-# Usage   : ./snapfile.sh [OPTIONS] <commande> <dossier>
+# Usage   : ./snapfile.sh [OPTIONS] <commande> <dossier> ["message"]
 # Aide    : ./snapfile.sh -h
+#
+# MODIFICATION (Sprint 4) :
+#   - Ajout de la variable SNAP_MESSAGE (description du snapshot)
+#   - Initialisée à "" ici, remplie par parse_options()
 ################################################################################
 
 # ============================================================================
@@ -35,6 +39,11 @@ OPT_RESET=0
 COMMAND=""
 TARGET_DIR=""
 
+# NOUVEAU : Message/description du snapshot
+# Initialisé ici à "", puis rempli par parse_options()
+# Valeur par défaut "Aucune description" appliquée dans parse_options() si vide
+SNAP_MESSAGE=""
+
 # ============================================================================
 # CHARGEMENT DES MODULES
 # ============================================================================
@@ -53,14 +62,13 @@ source "$SCRIPT_DIR/lib/commands.sh" # cmd_save(), cmd_log(), cmd_restore(), run
 # Capturer Ctrl+C (Interruption)
 trap 'echo ""; die 108 "Interruption par l utilisateur"' SIGINT
 
-#need it cz $@ already consumed by parse_options
-# Sauvegarder les arguments originaux (pour cmd_restore --id)
+# Sauvegarder les arguments originaux (nécessaire pour cmd_restore --id)
 ORIGINAL_ARGS=("$@")
 
-# 1. Parser les options et récupérer COMMAND + TARGET_DIR
+# 1. Parser les options et récupérer COMMAND + TARGET_DIR + SNAP_MESSAGE
 parse_options "$@"
 
-# pour synchroniser les arguments après le shift
+# Synchroniser les arguments après le shift
 set -- "$COMMAND" "$TARGET_DIR"
 
 # 2. Traiter l'option -r (reset) en priorité

@@ -2,6 +2,9 @@
 ################################################################################
 # utils.sh — Fonctions utilitaires partagées
 # Contient : usage(), log_event(), die()
+#
+# MODIFICATION:
+#   - usage() : ajout de l'option -m et des exemples de messages
 ################################################################################
 
 # ============================================================================
@@ -16,21 +19,25 @@ usage() {
 ╚══════════════════════════════════════════════════════════════════════════╝
 
 SYNOPSIS
-    snapfile [OPTIONS] <commande> <dossier>
+    snapfile [OPTIONS] <commande> <dossier> ["message"]
 
 DESCRIPTION
     SnapFile est un outil de versionnement transparent qui capture des
     instantanés horodatés de vos dossiers. Il utilise la déduplication
     par hash SHA-256 pour économiser l'espace disque.
 
+    Chaque snapshot peut être accompagné d'une description (similaire
+    aux messages de commit Git) pour documenter les modifications.
+
 COMMANDES
-    init                        Initialise le dépôt SnapFile manuellement
-    save <dossier>              Crée un nouveau snapshot du dossier
-    log <dossier>               Affiche l'historique des snapshots
-    restore <dossier> --id N    Restaure le snapshot N
+    init                              Initialise le dépôt SnapFile
+    save <dossier> ["message"]        Crée un snapshot avec description optionnelle
+    log <dossier>                     Affiche l'historique des snapshots
+    restore <dossier> --id N          Restaure le snapshot N
 
 OPTIONS
     -h                          Affiche ce manuel d'aide
+    -m "message"                Ajoute une description au snapshot (save uniquement)
     -f                          Fork : exécute la sauvegarde en arrière-plan
     -t                          Thread : compression parallèle des fichiers
     -s                          Subshell : restauration en prévisualisation
@@ -39,19 +46,31 @@ OPTIONS
     -r                          Reset : réinitialise la configuration
                                 (nécessite sudo)
 
+DESCRIPTION D'UN SNAPSHOT
+    Deux syntaxes sont supportées pour ajouter un message :
+
+    1) Via l'option -m (recommandé) :
+       ./snapfile.sh save mon_projet/ -m "Correction du bug de restauration"
+
+    2) Via le 3ème argument positionnel :
+       ./snapfile.sh save mon_projet/ "Ajout du module de logs"
+
+    Si aucun message n'est fourni, la description sera "Aucune description".
+
 EXEMPLES
     snapfile init
     snapfile save mon_projet/
-    snapfile -f save mon_projet/
-    snapfile -t save gros_projet/
+    snapfile save mon_projet/ "Première version stable"
+    snapfile save mon_projet/ -m "Correction du bug d'index"
+    snapfile -f save mon_projet/ -m "Sauvegarde en arrière-plan"
+    snapfile -t save gros_projet/ -m "Compression parallèle"
     snapfile log mon_projet/
-    snapfile -s restore mon_projet/ --id 3
-    snapfile restore mon_projet/ --id 3
-    sudo snapfile -r
+    snapfile restore mon_projet/ --id 20260512143022
+    snapfile -s restore mon_projet/ --id 20260512143022
 
 CODES D'ERREUR
     100    Option non reconnue
-    101    Paramètre manquant  ou invalide (chemin du dossier)
+    101    Paramètre manquant ou invalide (chemin du dossier)
     102    Dépôt non initialisé (aucun snapshot trouvé)
     103    Version introuvable (ID de snapshot inexistant)
     104    Espace disque insuffisant
@@ -62,9 +81,17 @@ CODES D'ERREUR
 
 FICHIERS
     ~/.snapfile/objects/        Fichiers dédupliqués (stockage par hash)
-    ~/.snapfile/snapshots/      Métadonnées des snapshots
-    ~/.snapfile/index/          Mapping hash → chemin
-    /var/log/snapfile/          Logs des opérations
+    ~/.snapfile/snapshots/      Métadonnées des snapshots (.meta)
+    ~/.snapfile/index/          Index des snapshots par dossier
+    ~/.snapfile/history.log     Journal des opérations
+
+FORMAT DES FICHIERS .meta
+    source_dir=/chemin/vers/dossier
+    description=Message de l'utilisateur
+    date=2026-05-12 14:30:22
+    author=safa
+    fichier1.txt a3f5b2c...
+    sous-dossier/fichier2.py 9e1d4f7...
 
 FORMAT DES LOGS
     yyyy-mm-dd-hh-mm-ss: username: TYPE: message
@@ -91,7 +118,7 @@ log_event() {
     # Créer le répertoire de log si nécessaire
     local log_dir
     log_dir=$(dirname "$LOG_FILE")
-    
+
     if [[ ! -d "$log_dir" ]]; then
         mkdir -p "$log_dir" 2>/dev/null || {
             echo "⚠️  Impossible de créer le répertoire de log: $log_dir" >&2
@@ -104,16 +131,13 @@ log_event() {
         echo "⚠️  Impossible d'écrire dans le fichier de log: $LOG_FILE" >&2
         return 1
     fi
-    
-    # Afficher aussi sur la console en mode verbose (optionnel)
-    # echo "$log_entry"
 }
 
 # ============================================================================
 # FONCTION : die()
 # Gestion unifiée des erreurs : log + affichage + aide + exit
 # Arguments :
-#   $1 - code d'erreur (100-105)
+#   $1 - code d'erreur (100-108)
 #   $2 - message d'erreur
 # ============================================================================
 die() {
