@@ -9,11 +9,8 @@
 # Crée la structure du dépôt ~/.snapfile/ si elle n'existe pas encore
 # ============================================================================
 init_repository() {
-    if [[ ! -d "$SNAPFILE_DIR" ]]; then
-        mkdir -p "$OBJECTS_DIR" "$SNAPSHOTS_DIR" "$INDEX_DIR"
-        log_event "INFOS" "Repository initialized at $SNAPFILE_DIR"
-        echo "✓ Dépôt SnapFile initialisé : $SNAPFILE_DIR"
-    fi
+    mkdir -p "$OBJECTS_DIR" "$SNAPSHOTS_DIR" "$INDEX_DIR"
+    log_event "INFOS" "Repository initialized at $SNAPFILE_DIR"
 }
 
 # ============================================================================

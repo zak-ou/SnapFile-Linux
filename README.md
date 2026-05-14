@@ -1,333 +1,182 @@
-# 📸 SnapFile - Système de Versionnement Léger
+# SnapFile
 
-**Version :** 1.0.0  
-**Sprint Actuel :** 1/4 (Complet ✅)  
-**Date :** 30 avril 2026
+Système de versionnement léger pour dossiers locaux sous Linux.
 
----
-
-## 📋 Table des Matières
-
-- [Description](#-description)
-- [Structure du Projet](#-structure-du-projet)
-- [Installation](#-installation)
-- [Utilisation](#-utilisation)
-- [Documentation](#-documentation)
-- [Tests](#-tests)
-- [Sprints](#-sprints)
-- [Équipe](#-équipe)
+SnapFile capture des instantanés horodatés de vos dossiers. Chaque snapshot est stocké de façon compressée avec déduplication par hash SHA-256 — si un fichier n'a pas changé, il n'est pas re-stocké.
 
 ---
 
-## 🎯 Description
+## Concept
 
-SnapFile est un système de versionnement transparent et léger pour utilisateurs non-développeurs. Il capture des instantanés horodatés de vos dossiers avec déduplication intelligente par hash SHA-256.
+Vous travaillez normalement sur vos fichiers. Quand vous voulez sauvegarder l'état actuel d'un dossier, vous lancez `snapfile save`. Plus tard, si vous avez besoin de revenir en arrière, `snapfile restore` remet les fichiers dans l'état exact du snapshot choisi.
 
-**Philosophie :** L'utilisateur continue à travailler normalement. SnapFile agit comme un photographe d'état qui capture des instantanés sur simple commande.
-
----
-
-## 📁 Structure du Projet
-
-```
-SnapFile-linux/
-├── src/                          # Code source
-│   └── snapfile.sh              # Script principal (350 lignes)
-│
-├── docs/                         # Documentation
-│   ├── README_sprint1.md        # Documentation technique Sprint 1
-│   ├── GUIDE_DEMARRAGE.md       # Guide de démarrage rapide
-│   ├── LIVRAISON_SPRINT1.md     # Rapport de livraison Sprint 1
-│   ├── POUR_SPRINT2.md          # Guide pour le Membre 2
-│   ├── RESUME_VISUEL.txt        # Résumé visuel
-│   └── INSTRUCTIONS_LIVRAISON.md # Instructions de livraison
-│
-├── tests/                        # Tests automatisés
-│   ├── test_sprint1.sh          # Suite de 12 tests Sprint 1
-│   └── TEST_RAPIDE.sh           # Démonstration rapide interactive
-│
-├── examples/                     # Exemples et données de test
-│   └── test_folder/             # Dossier de test exemple
-│
-├── .snapfile_config/             # Configuration (réservé)
-│
-└── README.md                     # Ce fichier
-```
+Tout est stocké dans `~/.snapfile/` — pas de serveur, pas de configuration complexe.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ```bash
-# Cloner ou accéder au projet
-cd SnapFile-linux
-
 # Rendre le script exécutable
 chmod +x src/snapfile.sh
 
-# Créer un alias (optionnel)
+# Optionnel : créer un alias global
 echo "alias snapfile='$(pwd)/src/snapfile.sh'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
 ---
 
-## 📖 Utilisation
-
-### Commandes de Base
+## Démarrage rapide
 
 ```bash
-# Afficher l'aide
-./src/snapfile.sh -h
+# 1. Initialiser le dépôt (une seule fois)
+./src/snapfile.sh init
 
-# Créer un snapshot
+# 2. Sauvegarder un dossier
 ./src/snapfile.sh save mon_projet/
 
-# Consulter l'historique
+# 3. Voir l'historique des sauvegardes
 ./src/snapfile.sh log mon_projet/
 
-# Restaurer une version
-./src/snapfile.sh restore mon_projet/ --id 3
-```
-
-### Options Avancées
-
-```bash
-# Sauvegarde en arrière-plan
-./src/snapfile.sh -f save mon_projet/
-
-# Compression parallèle (pour gros projets)
-./src/snapfile.sh -t save gros_projet/
-
-# Restauration en prévisualisation (sans risque)
-./src/snapfile.sh -s restore mon_projet/ --id 3
-
-# Log personnalisé
-./src/snapfile.sh -l ~/mes_logs save mon_projet/
-
-# Réinitialisation complète
-sudo ./src/snapfile.sh -r
+# 4. Restaurer une version précédente
+./src/snapfile.sh restore mon_projet/ --id 20260512143022
 ```
 
 ---
 
-## 📚 Documentation
+## Commandes
 
-### Documentation Principale
-
-| Document | Description |
+| Commande | Description |
 |----------|-------------|
-| **[README_sprint1.md](docs/README_sprint1.md)** | Documentation technique complète du Sprint 1 |
-| **[GUIDE_DEMARRAGE.md](docs/GUIDE_DEMARRAGE.md)** | Guide de démarrage rapide |
-| **[LIVRAISON_SPRINT1.md](docs/LIVRAISON_SPRINT1.md)** | Rapport de livraison officiel |
-
-### Documentation pour les Développeurs
-
-| Document | Destinataire |
-|----------|--------------|
-| **[POUR_SPRINT2.md](docs/POUR_SPRINT2.md)** | Membre 2 (Sprint 2) |
-| **[INSTRUCTIONS_LIVRAISON.md](docs/INSTRUCTIONS_LIVRAISON.md)** | Membre 1 (Livraison) |
-| **[RESUME_VISUEL.txt](docs/RESUME_VISUEL.txt)** | Résumé visuel |
+| `init` | Initialise le dépôt `~/.snapfile/` |
+| `save <dossier>` | Crée un snapshot du dossier |
+| `log <dossier>` | Affiche l'historique des snapshots |
+| `restore <dossier> --id <ID>` | Restaure le snapshot correspondant à l'ID |
 
 ---
 
-## 🧪 Tests
+## Options
 
-### Lancer les Tests
+| Option | Description | Exemple |
+|--------|-------------|---------|
+| `-h` | Affiche l'aide complète | `./snapfile.sh -h` |
+| `-m "message"` | Ajoute une description au snapshot | `./snapfile.sh save projet/ -m "version stable"` |
+| `-f` | Fork : sauvegarde en arrière-plan | `./snapfile.sh -f save projet/` |
+| `-t` | Thread : compression parallèle (gros dossiers) | `./snapfile.sh -t save projet/` |
+| `-s` | Subshell : restauration en prévisualisation dans `/tmp/` | `./snapfile.sh -s restore projet/ --id <ID>` |
+| `-l <chemin>` | Spécifie un dossier de logs personnalisé | `./snapfile.sh -l ~/mes_logs save projet/` |
+| `-r` | Reset : supprime tous les snapshots (nécessite sudo) | `sudo ./snapfile.sh -r` |
+
+> 
+
+---
+
+## Ajouter une description à un snapshot
+
+Deux syntaxes sont acceptées :
 
 ```bash
-# Test rapide interactif (recommandé pour démo)
-chmod +x tests/TEST_RAPIDE.sh
-./tests/TEST_RAPIDE.sh
+# Via l'option -m (recommandé)
+./src/snapfile.sh save mon_projet/ -m "Correction du bug de login"
 
-# Suite de tests complète (12 tests automatisés)
-chmod +x tests/test_sprint1.sh
-./tests/test_sprint1.sh
+# Via le 3ème argument positionnel
+./src/snapfile.sh save mon_projet/ "Correction du bug de login"
 ```
 
-### Résultats Attendus
-
-- ✅ **12/12 tests réussis** (100%)
-- ✅ Tous les codes d'erreur validés (100-105)
-- ✅ Toutes les options fonctionnelles (-h, -f, -t, -s, -l, -r)
+Si aucun message n'est fourni, la description sera `Aucune description`.
 
 ---
 
-## 🎯 Sprints
+## Restauration en prévisualisation (-s)
 
-### ✅ Sprint 1 : Initialisation & Architecture (COMPLET)
+L'option `-s` restaure le snapshot dans `/tmp/snapfile_preview/` au lieu d'écraser le dossier original. Utile pour vérifier le contenu avant de vraiment restaurer.
 
-**Responsable :** Membre 1  
-**Statut :** ✅ 100% Complet et Validé
-
-**Livrables :**
-- ✅ Script principal avec squelette fonctionnel
-- ✅ Fonction `usage()` (option `-h`)
-- ✅ Parseur d'options avec `getopts`
-- ✅ Validation du paramètre obligatoire
-- ✅ Structure du dépôt `~/.snapfile/`
-- ✅ Système de log au format standardisé
-- ✅ Gestion unifiée des erreurs (codes 100-105)
-- ✅ Documentation complète (7 fichiers)
-- ✅ Suite de tests (12 tests)
-
-**Métriques :**
-- Lignes de code : 350
-- Fonctions : 7
-- Tests : 12 (100% réussis)
+```bash
+./src/snapfile.sh -s restore mon_projet/ --id 20260512143022
+# → fichiers restaurés dans /tmp/snapfile_preview/mon_projet/
+```
 
 ---
 
-### 🔄 Sprint 2 : Sauvegarde & Déduplication (EN COURS)
-
-**Responsable :** Membre 2  
-**Statut :** 📋 À démarrer
-
-**Objectifs :**
-- Commande `save` avec parcours récursif
-- Calcul SHA-256 de chaque fichier
-- Déduplication par hash (liens symboliques)
-- Compression avec tar/gzip
-- Métadonnées des snapshots
-- Option `-f` (fork en arrière-plan)
-- Option `-t` (compression parallèle)
-- Vérification espace disque (erreur 104)
-
-**Documentation :** [POUR_SPRINT2.md](docs/POUR_SPRINT2.md)
-
----
-
-### 📋 Sprint 3 : Consultation & Restauration (À VENIR)
-
-**Responsable :** Membre 3  
-**Statut :** ⏳ En attente du Sprint 2
-
-**Objectifs :**
-- Commande `log` (historique des snapshots)
-- Commande `restore` (restauration)
-- Option `-s` (prévisualisation dans /tmp/)
-- Option `-r` (reset complet)
-- Gestion des erreurs 102 et 103
-
----
-
-### 🧪 Sprint 4 : Tests & Finition (À VENIR)
-
-**Responsable :** Membre 4  
-**Statut :** ⏳ En attente du Sprint 3
-
-**Objectifs :**
-- Tests complets (léger, moyen, lourd)
-- Mesures de performance
-- Corrections de bugs
-- Rapport final
-- Démonstration
-
----
-
-## 🤝 Équipe
-
-| Membre | Sprint | Responsabilité | Statut |
-|--------|--------|----------------|--------|
-| **Membre 1** | Sprint 1 | Initialisation & Architecture | ✅ Complet |
-| **Membre 2** | Sprint 2 | Sauvegarde & Déduplication | 🔄 En cours |
-| **Membre 3** | Sprint 3 | Consultation & Restauration | 📋 À venir |
-| **Membre 4** | Sprint 4 | Tests & Finition | 🧪 À venir |
-
----
-
-## 📊 Métriques Globales
-
-### Sprint 1 (Actuel)
-
-- **Lignes de code :** 350 lignes
-- **Fonctions créées :** 7 fonctions
-- **Options implémentées :** 6 options
-- **Codes d'erreur :** 6 codes (100-105)
-- **Tests automatisés :** 12 tests
-- **Taux de réussite :** 100%
-- **Documentation :** 7 fichiers
-
----
-
-## 🏗️ Architecture Technique
-
-### Structure du Dépôt
+## Structure du dépôt
 
 ```
 ~/.snapfile/
-├── objects/        # Fichiers dédupliqués (stockage par hash SHA-256)
-├── snapshots/      # Métadonnées des snapshots
-└── index/          # Mapping hash → chemin original
+├── objects/      # Fichiers compressés, dédupliqués par hash SHA-256
+├── snapshots/    # Métadonnées de chaque snapshot (.meta)
+├── index/        # Index des snapshots par dossier
+└── history.log   # Journal de toutes les opérations
 ```
 
-### Codes d'Erreur
+Chaque fichier `.meta` contient :
+```
+source_dir=/chemin/vers/dossier
+description=Mon message
+date=2026-05-12 14:30:22
+author=doha
+fichier1.txt   a3f5b2c...
+sous-dossier/fichier2.py   9e1d4f7...
+```
 
-| Code | Signification |
-|------|---------------|
+---
+
+## Codes d'erreur
+
+| Code | Cause |
+|------|-------|
 | 100 | Option non reconnue |
-| 101 | Paramètre manquant (chemin du dossier) |
-| 102 | Dépôt non initialisé (aucun snapshot trouvé) |
-| 103 | Version introuvable (ID de snapshot inexistant) |
+| 101 | Chemin du dossier manquant ou invalide |
+| 102 | Dépôt non initialisé ou aucun snapshot trouvé |
+| 103 | ID de snapshot introuvable |
 | 104 | Espace disque insuffisant |
-| 105 | Permission refusée (option -r nécessite sudo) |
+| 105 | Conflit d'options ou sudo requis |
+| 106 | Échec de compilation du worker C (gcc manquant) |
+| 107 | Erreur système (fichier temporaire) |
+| 108 | Interruption utilisateur (Ctrl+C) |
 
-### Format des Logs
+---
+
+## Format des logs
 
 ```
 yyyy-mm-dd-hh-mm-ss: username: TYPE: message
 ```
 
-**Exemple :**
+Exemple :
 ```
-2026-04-30-14-23-45: alice: INFOS: SNAPSHOT_CREATED id=5 files=12 size=45M
+2026-05-12-14-30-22: doha: INFOS: SNAPSHOT_CREATED id=20260512143022 files=42 size=2M desc="version stable"
 ```
 
 ---
 
-## 🔧 Configuration
-
-### Variables d'Environnement (Futures)
+## Tests
 
 ```bash
-export SNAPFILE_DIR="$HOME/.snapfile"
-export SNAPFILE_LOG="/var/log/snapfile/history.log"
+# Suite de tests complète
+chmod +x tests/test_complet.sh
+./tests/test_complet.sh
 ```
 
-### Fichier de Configuration (Futur)
+---
 
-`.snapfile_config/config.json` (à implémenter dans les sprints futurs)
+## Structure du code source
+
+```
+src/
+├── snapfile.sh        # Point d'entrée principal
+└── lib/
+    ├── init.sh        # init_repository(), validate_target_dir()
+    ├── options.sh     # parse_options()
+    ├── commands.sh    # cmd_init(), cmd_save(), cmd_log(), cmd_restore(), run_command()
+    ├── reset.sh       # check_sudo(), reset_snapfile()
+    ├── utils.sh       # usage(), log_event(), die()
+    ├── fork_worker.c  # Worker C pour le mode fork (-f)
+    └── thread_worker.c # Worker C pour le mode thread (-t)
+```
 
 ---
 
-## 📄 Licence
+## Licence
 
-Projet académique - Théorie des Systèmes d'Exploitation  
-Module : SE Windows/Unix/Linux  
-Date : 18 avril 2026
-
----
-
-## 📞 Support
-
-### Pour les Utilisateurs
-
-- Consulter [GUIDE_DEMARRAGE.md](docs/GUIDE_DEMARRAGE.md)
-- Lancer `./src/snapfile.sh -h`
-
-### Pour les Développeurs
-
-- Sprint 1 : [README_sprint1.md](docs/README_sprint1.md)
-- Sprint 2 : [POUR_SPRINT2.md](docs/POUR_SPRINT2.md)
-- Tests : `./tests/test_sprint1.sh`
-
----
-
-## ✅ Statut du Projet
-
-**Sprint 1 : 100% Complet et Validé ✅**  
-**Prêt pour livraison au Membre 2 🚀**
-
----
-
-*Dernière mise à jour : 30 avril 2026*
+Projet académique — Théorie des Systèmes d'Exploitation, module SE Windows/Unix/Linux.

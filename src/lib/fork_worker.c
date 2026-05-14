@@ -12,6 +12,9 @@
  * Ce programme lit une liste de fichiers depuis un fichier texte
  * et crée des processus fils via fork() pour traiter les fichiers
  * par lots de 5. Chaque fils appelle la fonction bash 'process_file'.
+ * 
+ * CORRECTION : Attend la fin de chaque lot avant de passer au suivant
+ * pour éviter les race conditions sur le fichier .meta
  */
 
 void execute_batch(char *files[], int count) {
@@ -39,7 +42,11 @@ void execute_batch(char *files[], int count) {
         execvp("bash", args);
         perror("execvp failed");
         exit(1);
-    } else if (pid < 0) {
+    } else if (pid > 0) {
+        // Processus parent : ATTENDRE ce fils avant de continuer
+        int status;
+        waitpid(pid, &status, 0);
+    } else {
         perror("fork failed");
     }
 }
@@ -69,7 +76,7 @@ int main(int argc, char *argv[]) {
         count++;
 
         if (count == BATCH_SIZE) {
-            execute_batch(batch, count);
+            execute_batch(batch, count);  // Attend automatiquement la fin
             for (int i = 0; i < count; i++) {
                 free(batch[i]);
             }
@@ -79,17 +86,12 @@ int main(int argc, char *argv[]) {
 
     // Traiter le dernier lot s'il n'est pas vide
     if (count > 0) {
-        execute_batch(batch, count);
+        execute_batch(batch, count);  // Attend automatiquement la fin
         for (int i = 0; i < count; i++) {
             free(batch[i]);
         }
     }
 
     fclose(fp);
-
-    // Attendre la fin de tous les processus fils
-    int status;
-    while (wait(&status) > 0);
-
     return 0;
 }

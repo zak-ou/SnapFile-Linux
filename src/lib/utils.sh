@@ -33,7 +33,7 @@ COMMANDES
     init                              Initialise le dépôt SnapFile
     save <dossier> ["message"]        Crée un snapshot avec description optionnelle
     log <dossier>                     Affiche l'historique des snapshots
-    restore <dossier> --id N          Restaure le snapshot N
+    restore <dossier> --id N          Restaure le snapshot N (ID complet ou numéro)
 
 OPTIONS
     -h                          Affiche ce manuel d'aide
@@ -66,7 +66,8 @@ EXEMPLES
     snapfile -t save gros_projet/ -m "Compression parallèle"
     snapfile log mon_projet/
     snapfile restore mon_projet/ --id 20260512143022
-    snapfile -s restore mon_projet/ --id 20260512143022
+    snapfile restore mon_projet/ --id 3
+    snapfile -s restore mon_projet/ --id 2
 
 CODES D'ERREUR
     100    Option non reconnue

@@ -32,7 +32,8 @@ export HOME=$HOME
 cmd_init() {
     log_event "INFOS" "COMMAND: init"
 
-    if [[ -d "$SNAPFILE_DIR" ]]; then
+    # Vérifier si le dépôt est complet (dossier + sous-dossiers)
+    if [[ -d "$SNAPFILE_DIR" ]] && [[ -d "$OBJECTS_DIR" ]] && [[ -d "$SNAPSHOTS_DIR" ]] && [[ -d "$INDEX_DIR" ]]; then
         echo "Le dépôt SnapFile existe déjà : $SNAPFILE_DIR"
         echo ""
         echo "Structure actuelle :"
@@ -43,8 +44,11 @@ cmd_init() {
         echo "Index     : $(ls "$INDEX_DIR" 2>/dev/null | wc -l) fichier(s)"
         log_event "INFOS" "Repository already exists at $SNAPFILE_DIR"
     else
-        mkdir -p "$OBJECTS_DIR" "$SNAPSHOTS_DIR" "$INDEX_DIR"
-        log_event "INFOS" "Repository initialized at $SNAPFILE_DIR"
+        # Dépôt inexistant ou incomplet → (re)créer la structure complète
+        if [[ -d "$SNAPFILE_DIR" ]]; then
+            echo "Dépôt incomplet détecté. Création des dossiers manquants..."
+        fi
+        init_repository
         echo "Dépôt SnapFile initialisé avec succès !"
         echo ""
         echo "📁 Structure créée :"
@@ -56,6 +60,8 @@ cmd_init() {
         echo "Vous pouvez maintenant utiliser : ./snapfile.sh save <dossier>"
     fi
 }
+
+
 
 # ============================================================================
 # FONCTION : cmd_save()
@@ -433,6 +439,11 @@ cmd_restore() {
         dest_dir="/tmp/snapfile_preview/${dir_name}"
         echo "📂 Mode prévisualisation : restauration dans $dest_dir"
         echo ""
+        
+        # Supprimer le dossier de prévisualisation s'il existe déjà
+        if [[ -d "$dest_dir" ]]; then
+            rm -rf "$dest_dir"
+        fi
     else
         dest_dir="$TARGET_DIR"
         echo "📂 Restauration dans : $dest_dir"
@@ -441,6 +452,11 @@ cmd_restore() {
         if [[ "$confirm" != "oui" ]]; then
             echo "Opération annulée."
             exit 0
+        fi
+        
+        # Supprimer complètement le dossier existant avant de le recréer
+        if [[ -d "$dest_dir" ]]; then
+            rm -rf "$dest_dir"
         fi
     fi
 
@@ -459,6 +475,12 @@ cmd_restore() {
         rel_path=$(echo "$line" | awk '{print $1}')
         local hash
         hash=$(echo "$line" | awk '{print $2}')
+
+        # Enlever le préfixe du nom du dossier si présent
+        # Par exemple : test_final/file1.txt devient file1.txt
+        if [[ "$rel_path" == "${dir_name}/"* ]]; then
+            rel_path="${rel_path#${dir_name}/}"
+        fi
 
         local obj_file="$OBJECTS_DIR/${hash}.gz"
         local dest_file="$dest_dir/$rel_path"
@@ -493,15 +515,6 @@ cmd_restore() {
 # (non modifiée dans ce sprint)
 # ============================================================================
 run_command() {
-    # Vérifier si le mode Fork est activé
-    if [[ $OPT_FORK -eq 1 ]]; then
-        cmd_save "$TARGET_DIR" &
-        local pid=$!
-        echo -e "\n[INFO] Exécution en arrière-plan lancée (PID: $pid)"
-        log_event "INFOS" "Mode Fork activé : PID $pid"
-        return 0
-    fi
-
     # Exécution normale
     case "$COMMAND" in
         init)    cmd_init ;;
